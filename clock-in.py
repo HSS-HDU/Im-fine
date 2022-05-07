@@ -8,7 +8,7 @@ import re
 import datetime
 import time
 import sys
-
+import ddddocr
 
 class ClockIn(object):
     """Hit card class
@@ -25,6 +25,7 @@ class ClockIn(object):
     LOGIN_URL = "https://zjuam.zju.edu.cn/cas/login?service=https%3A%2F%2Fhealthreport.zju.edu.cn%2Fa_zju%2Fapi%2Fsso%2Findex%3Fredirect%3Dhttps%253A%252F%252Fhealthreport.zju.edu.cn%252Fncov%252Fwap%252Fdefault%252Findex"
     BASE_URL = "https://healthreport.zju.edu.cn/ncov/wap/default/index"
     SAVE_URL = "https://healthreport.zju.edu.cn/ncov/wap/default/save"
+    captcha_url = "https://healthreport.zju.edu.cn/ncov/wap/default/code"
     HEADERS = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36"
     }
@@ -71,7 +72,10 @@ class ClockIn(object):
         if not html:
             res = self.sess.get(self.BASE_URL, headers=self.HEADERS)
             html = res.content.decode()
-
+            # 新建ocr，并读取验证码进行识别
+            ocr = ddddocr.DdddOcr(old=True)
+            resp = self.sess.get(self.captcha_url, headers=self.HEADERS)
+            captcha = ocr.classification(resp.content)
         try:
             old_infos = re.findall(r'oldInfo: ({[^\n]+})', html)
             if len(old_infos) != 0:
@@ -107,7 +111,7 @@ class ClockIn(object):
         new_info['jcqzrq'] = ""
         new_info['gwszdd'] = ""
         new_info['szgjcs'] = ""
-
+        new_info['verifyCode'] = captcha
         # 2021.08.05 Fix 2
         magics = re.findall(r'"([0-9a-f]{32})":\s*"([^\"]+)"', html)
         for item in magics:
@@ -180,7 +184,16 @@ def main(username, password):
             if res['m'].find("已经") != -1: # 已经填报过了 不报错
                 pass
             else:
-                raise Exception
+                count = 0
+                while (str(res['e']) != '0' and count < 10):
+                    time.sleep(5)
+                    dk.get_info()
+                    res = dk.post()
+                    count +=1
+                if str(res['e']) == '0':
+                    print('已为您打卡成功！')
+                else:
+                    raise Exception
     except Exception:
         print('数据提交失败')
         raise Exception
